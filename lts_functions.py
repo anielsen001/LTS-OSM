@@ -131,6 +131,78 @@ def get_lanes(gdf_edges, default_lanes = 2):
     
     return gdf_edges
 
+def mph_to_kph(mph):
+    """Convert from kph to mph"""
+    kph = mph *  1.60934
+    return kph
+
+def kph_to_mph(kph):
+    """Convert from mph to kph"""
+    mph = kph /  1.60934
+    return mph
+
+def knots_to_mph(knots):
+    """Convert from knots to mph"""
+    mph = knots * 1.15078
+    return mph
+
+def mph_to_knots(mph):
+    """Convert from mph to knots"""
+    knots = mph / 1.15078
+    return knots
+    
+def parse_speed(speed_string):
+    """
+    Parse a string representing a speed and convert to a float in mph, interpreting the units
+
+    from the OpenStreeMap docs a simple number in the string is in kph
+    other speeds should have units at the end i.e. '35 mph' or '10 knots'
+
+    Paramteters
+    ===========
+    speed_string:
+        string representing the speed
+
+    Returns
+    =======
+    speed_mph_float
+        floating point value representing the speed in mph
+
+    References
+    ==========
+    https://wiki.openstreetmap.org/wiki/Key:maxspeed
+    """
+
+    if type(speed_string) is str:
+        if 'mph' in speed_string:
+            return float(speed_string.split()[0])
+        elif 'knots' in speed_string:
+            return knots_to_mph(float(speed_string.split()[0]))
+        else:
+            return float(speed_string)
+        
+    if np.isnan(speed_string):
+        return np.nan
+
+def clean_speeds(
+        gdf_edges,
+        key = 'maxspeed',
+        units = 'mph',
+        newkey = None,
+):
+    """
+    Convert speeds to a numeric value. In OpenStreetMap, this is a string. If it's just a number
+    speeds represent kph, if it's something else, it will have a unit associated with it '35 mph'
+    """
+
+    # this is the is the new key to usefor the output column in gdf_edges, default is 'maxspeed_mph'
+    if newkey is None:
+        newkey = key + '_' + units
+
+    gdf_edges[newkey] = gdf_edges[key].apply(parse_speed)
+
+    return gdf_edges
+
 def get_max_speed(gdf_edges, national=40, local=50, motorway=100, primary=80, secondary=80):
     """
     Get the speed limit for ways
@@ -155,6 +227,60 @@ def get_max_speed(gdf_edges, national=40, local=50, motorway=100, primary=80, se
 
     # create a list of the values we want to assign for each condition
     values = [national, motorway, primary, secondary, local]
+
+    # create a new column and use np.select to assign values to it using our lists as arguments
+    gdf_edges['maxspeed_assumed'] = np.select(conditions, values, default=gdf_edges['maxspeed'])
+    
+    # if multiple speed values present, use the largest one
+    gdf_edges['maxspeed_assumed'] = gdf_edges['maxspeed_assumed'].apply(lambda x: np.array(x, dtype = 'int')).apply(lambda x: np.max(x)) 
+
+    return gdf_edges
+
+def get_max_speed_us(
+        gdf_edges,
+        #local=50, # default speed for roads in city removed from original
+        motorway=80, #mph, was 100 kph, in US, interstate type roads
+        primary=60, # mph, was 80 kph
+        secondary=35, # mph, was 80 kph
+        tertiary=35, # mph, not defined in origianl
+        residential=25, #mph, was 40 khh, changed from "national" (not sure what type of road this means) to "residential"
+):
+    """
+    maximum speeds updated for US. listed in miles/hour
+    
+    
+    Get the speed limit for ways
+    If not available, make assumptions based on road type
+    This errs on the high end of assumptions
+
+    default speeds in this code appear to be km/hr
+    speeds in US are in miles/hour, original LTS definitions were in mph.
+    OSM default speeds (with no units) are km/hr.
+    If a unit is specified, then they will appear as a string '35 mph'
+    """
+    pd.options.mode.chained_assignment = None  # default='warn'
+    # create a list of conditions
+    # When multiple conditions are satisfied, the first one encountered in conditions is used
+    # conditions = [
+    #     (gdf_edges['maxspeed'] == 'national'),        # unclear what 'national' represents
+    #     (gdf_edges['maxspeed'].isna()) & (gdf_edges['highway'] == 'motorway'),
+    #     (gdf_edges['maxspeed'].isna()) & (gdf_edges['highway'] == 'primary'),
+    #     (gdf_edges['maxspeed'].isna()) & (gdf_edges['highway'] == 'secondary'),
+    #     (gdf_edges['maxspeed'].isna()),
+    #     ]
+    create a list of conditions
+    When multiple conditions are satisfied, the first one encountered in conditions is used
+    conditions = [
+        (gdf_edges['maxspeed'].isna()) & (gdf_edges['highway'] == 'motorway'),
+        (gdf_edges['maxspeed'].isna()) & (gdf_edges['highway'] == 'primary'),
+        (gdf_edges['maxspeed'].isna()) & (gdf_edges['highway'] == 'secondary'),
+        (gdf_edges['maxspeed'].isna()) & (gdf_edges['highway'] == 'tertiary'),
+        (gdf_edges['maxspeed'].isna()) & (gdf_edges['highway'] == 'residential'),
+        (gdf_edges['maxspeed'].isna()),
+        ]
+    
+    # create a list of the values we want to assign for each condition
+    values = [motorway, primary, secondary, tertiary, resdidential]
 
     # create a new column and use np.select to assign values to it using our lists as arguments
     gdf_edges['maxspeed_assumed'] = np.select(conditions, values, default=gdf_edges['maxspeed'])
