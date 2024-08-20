@@ -136,6 +136,11 @@ def get_max_speed(gdf_edges, national=40, local=50, motorway=100, primary=80, se
     Get the speed limit for ways
     If not available, make assumptions based on road type
     This errs on the high end of assumptions
+
+    default speeds in this code appear to be km/hr
+    speeds in US are in miles/hour, original LTS definitions were in mph.
+    OSM default speeds (with no units) are km/hr.
+    If a unit is specified, then they will appear as a string '35 mph'
     """
     pd.options.mode.chained_assignment = None  # default='warn'
     # create a list of conditions
